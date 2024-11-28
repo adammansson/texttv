@@ -114,21 +114,18 @@ def graphical():
 def terminal():
 	print('TERMINAL')
 
-	oldPage = 100
-	currentPage = oldPage
+	currentPage = 100
+	oldPage = currentPage
 	(prevPage, nextPage, altText) = getTerminal(currentPage)
-
-	print(altText)
-	print(f'{prevPage} < {currentPage} > {nextPage}')
 
 	running = True
 	while running:
-		print(altText)
-		print(f'{prevPage} < {currentPage} > {nextPage}')
-
 		if currentPage != oldPage:
 			oldPage = currentPage
 			(prevPage, nextPage, altText) = getTerminal(currentPage)
+
+		print(altText)
+		print(f'{prevPage} < {currentPage} > {nextPage}')
 
 		userInput = input()
 		if userInput == 'q':
