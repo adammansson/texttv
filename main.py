@@ -6,6 +6,11 @@ import pygame
 import re
 import argparse
 
+def parseImage(data):
+	gifBytes = base64.b64decode(data)
+	image = Image.open(io.BytesIO(gifBytes)).convert('RGBA')
+	return pygame.image.fromstring(image.tobytes(), image.size, image.mode)
+
 def parseMap(data):
 	pattern = r'COORDS="([\d,]+)" HREF="(\d+)"'
 	areas = []
@@ -13,11 +18,6 @@ def parseMap(data):
 		x1, y1, x2, y2 = map(int, coords.split(','))
 		areas.append(((x1, y1, x2, y2), href))
 	return areas
-
-def parseImage(data):
-	gifBytes = base64.b64decode(data)
-	image = Image.open(io.BytesIO(gifBytes)).convert('RGBA')
-	return pygame.image.fromstring(image.tobytes(), image.size, image.mode)
 
 def getPage(page):
 	response = requests.get(f'https://www.svt.se/text-tv/api/{page}')
