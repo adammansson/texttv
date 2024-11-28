@@ -57,7 +57,7 @@ def graphical():
 
 	oldPage = 100
 	currentPage = oldPage
-	(prevPage, nextPage, background, areas) = getPage(currentPage)
+	(prevPage, nextPage, background, areas) = getGraphical(currentPage)
 	inRect = False
 
 	screen = pygame.display.set_mode(background.get_size())
@@ -68,7 +68,7 @@ def graphical():
 		if currentPage != oldPage:
 			print('UPDATE')
 			oldPage = currentPage
-			(prevPage, nextPage, background, areas) = getPage(currentPage)
+			(prevPage, nextPage, background, areas) = getGraphical(currentPage)
 
 		if inRect:
 			pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
