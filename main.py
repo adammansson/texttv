@@ -5,6 +5,7 @@ import io
 import pygame
 import re
 import argparse
+import curses
 
 def parseImage(data):
 	gifBytes = base64.b64decode(data)
@@ -50,7 +51,7 @@ def getTerminal(page):
 		altText
 		)
 
-def graphical():
+def viewGraphical():
 	print('GRAPHICAL')
 
 	pygame.init()
@@ -111,7 +112,7 @@ def graphical():
 
 	pygame.quit()
 
-def terminal():
+def viewTerminal():
 	print('TERMINAL')
 
 	currentPage = 100
@@ -138,18 +139,61 @@ def terminal():
 			if nextPage != '':
 				currentPage = nextPage
 
+def viewCurses():
+	print('CURSES')
+
+	stdscr = curses.initscr()
+	curses.noecho()
+	curses.cbreak()
+
+	currentPage = 100
+	oldPage = currentPage
+	(prevPage, nextPage, altText) = getTerminal(currentPage)
+
+	running = True
+	while running:
+		if currentPage != oldPage:
+			oldPage = currentPage
+			(prevPage, nextPage, altText) = getTerminal(currentPage)
+
+		stdscr.clear()
+		stdscr.addstr(0, 0, altText)
+		stdscr.addstr(curses.LINES - 1, 0, f'{prevPage} < {currentPage} > {nextPage}')
+
+		c = stdscr.getch()
+		if c == ord('q'):
+			running = False
+
+		elif c == ord('p'):
+			if prevPage != '':
+				currentPage = prevPage
+
+		elif c == ord('n'):
+			if nextPage != '':
+				currentPage = nextPage
+
+	curses.endwin()
+
 def run():
 	parser = argparse.ArgumentParser(
 					prog='TextTV',
 					description='TextTV viewer in Python'
 					)
-	parser.add_argument('-g', '--graphical', action='store_true')
+
+	parser.add_argument(
+				'mode',
+				choices=['graphical', 'terminal', 'curses'],
+				nargs='?',
+				default='terminal'
+			)
 	args = parser.parse_args()
 
-	if args.graphical:
-		graphical()
+	if args.mode == 'terminal':
+		viewTerminal()
+	elif args.mode == 'curses':
+		viewCurses()
 	else:
-		terminal()
+		viewGraphical()
 
 if __name__ == '__main__':
 	run()
