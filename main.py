@@ -3,12 +3,17 @@ import curses
 
 def getSubpages(page):
 	response = requests.get(f'https://www.svt.se/text-tv/api/{page}')
-	data = response.json()['data']
-	prevPage = data['prevPage']
-	nextPage = data['nextPage']
-	subPages = data['subPages']
+	json = response.json()
+	status = json['status']
 
-	return(subPages, prevPage, nextPage)
+	try:
+		data = json['data']
+		prevPage = data['prevPage']
+		nextPage = data['nextPage']
+		subPages = data['subPages']
+		return (status, subPages, prevPage, nextPage)
+	except KeyError:
+		return (status, [], -1, -1)
 
 def parseText(altText):
 	lines = list(filter(lambda line : line != '', altText.split('\n')))
@@ -29,8 +34,11 @@ def parseText(altText):
 		else:
 			group.append(line)
 		
-	header = groups[0]
-	groups = groups[1:]
+	if len(groups) > 0:
+		header = groups[0]
+		groups = groups[1:]
+	else:
+		header = []
 
 	return (header, footer, groups)
 
@@ -40,8 +48,9 @@ def renderText(stdscr, subpage):
 
 	(header, footer, groups) = parseText(subpage['altText'])
 
-	stdscr.addstr(y, x, header[0])
-	y += 1
+	if (len(header) > 0):
+		stdscr.addstr(y, x, header[0])
+		y += 1
 	if (len(header) > 1):
 		stdscr.addstr(y, x, header[1], curses.color_pair(1))
 		y += 1
@@ -72,18 +81,25 @@ def main(stdscr):
 	currentPage = 100
 	currentSubpage = 0
 	oldPage = currentPage
-	(subpages, prevPage, nextPage) = getSubpages(currentPage)
+	(status, subpages, prevPage, nextPage) = getSubpages(currentPage)
 
 	running = True
 	while running:
 		if currentPage != oldPage:
-			(subpages, prevPage, nextPage) = getSubpages(currentPage)
-			if currentPage < oldPage:
-				currentSubpage = len(subpages) - 1
-				stdscr.addstr(str(currentSubpage))
+			(status, newSubpages, newPrevPage, newNextPage) = getSubpages(currentPage)
+			if status == 'success':
+				subpages = newSubpages
+				prevPage = newPrevPage
+				nextPage = newNextPage
+
+				if currentPage < oldPage:
+					currentSubpage = len(subpages) - 1
+					stdscr.addstr(str(currentSubpage))
+				else:
+					currentSubpage = 0
+				oldPage = currentPage
 			else:
-				currentSubpage = 0
-			oldPage = currentPage
+				currentPage = oldPage
 
 		stdscr.clear()
 
@@ -106,6 +122,12 @@ def main(stdscr):
 				currentSubpage += 1
 			elif nextPage != '':
 				currentPage = int(nextPage)
+		elif c == ord(':'):
+			curses.echo()
+			stdscr.addstr(0, 2, '   ')
+			s = stdscr.getstr(0, 2, 3)
+			currentPage = int(s)
+			curses.noecho()
 
 def run():
 	curses.wrapper(main)
