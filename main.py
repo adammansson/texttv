@@ -1,199 +1,114 @@
 import requests
-import base64
-from PIL import Image
-import io
-import pygame
-import re
-import argparse
 import curses
 
-def parseImage(data):
-	gifBytes = base64.b64decode(data)
-	image = Image.open(io.BytesIO(gifBytes)).convert('RGBA')
-	return pygame.image.fromstring(image.tobytes(), image.size, image.mode)
-
-def parseMap(data):
-	pattern = r'COORDS="([\d,]+)" HREF="(\d+)"'
-	areas = []
-	for coords, href in re.findall(pattern, data):
-		x1, y1, x2, y2 = map(int, coords.split(','))
-		areas.append(((x1, y1, x2, y2), href))
-	return areas
-
-def getPage(page):
+def getSubpages(page):
 	response = requests.get(f'https://www.svt.se/text-tv/api/{page}')
 	data = response.json()['data']
 	prevPage = data['prevPage']
 	nextPage = data['nextPage']
-	subPage = data['subPages'][0]
+	subPages = data['subPages']
 
-	return(prevPage, nextPage, subPage)
+	return(subPages, prevPage, nextPage)
 
-def getGraphical(page):
-	(prevPage, nextPage, subPage) = getPage(page)
-	gifAsBase64 = subPage['gifAsBase64']
-	imageMap = subPage['imageMap']
+def parseText(altText):
+	lines = list(filter(lambda line : line != '', altText.split('\n')))
+	width = max(list(map(lambda line : len(line), lines)))
+	lines = list(map(lambda line : line.strip().ljust(width + 2).rjust(width + 4), lines))
 
-	return	(
-		prevPage,
-		nextPage,
-		parseImage(gifAsBase64),
-		parseMap(imageMap),
-		)
+	groups = []
+	group = []
 
-def getTerminal(page):
-	(prevPage, nextPage, subPage) = getPage(page)
-	altText = subPage['altText']
+	footer = lines[-2:-1]
+	lines = lines[:-1]
 
-	return	(
-		prevPage,
-		nextPage,
-		altText
-		)
-
-def viewGraphical():
-	print('GRAPHICAL')
-
-	pygame.init()
-
-	oldPage = 100
-	currentPage = oldPage
-	(prevPage, nextPage, background, areas) = getGraphical(currentPage)
-	inRect = False
-
-	screen = pygame.display.set_mode(background.get_size())
-	pygame.display.set_caption('TextTV')
-
-	running = True
-	while running:
-		if currentPage != oldPage:
-			print('UPDATE')
-			oldPage = currentPage
-			(prevPage, nextPage, background, areas) = getGraphical(currentPage)
-
-		if inRect:
-			pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+	for line in lines:
+		if all(c == ' ' for c in line):
+			if group != []:
+				groups.append(group)
+				group = []
 		else:
-			pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+			group.append(line)
+		
+	header = groups[0]
+	groups = groups[1:]
 
-		for event in pygame.event.get():
-			if event.type == pygame.QUIT:
-				print('QUIT')
-				running = False
-			
-			elif event.type == pygame.MOUSEMOTION:
-				x, y = event.pos
-				inRect = False
-				for (x1, y1, x2, y2), newPage in areas:
-					if x1 <= x <= x2 and y1 <= y <= y2:
-						inRect = True
+	return (header, footer, groups)
 
-			elif event.type == pygame.MOUSEBUTTONDOWN:
-				x, y = event.pos
-				for (x1, y1, x2, y2), newPage in areas:
-					if x1 <= x <= x2 and y1 <= y <= y2:
-						currentPage = int(newPage)
+def renderText(stdscr, subpage):
+	y = 0
+	x = 0
 
-			elif event.type == pygame.KEYDOWN:
-				if event.key == pygame.K_q:
-					print('QUIT')
-					running = False
+	(header, footer, groups) = parseText(subpage['altText'])
 
-				elif event.key == pygame.K_LEFT:
-					if prevPage != '':
-						currentPage = prevPage
+	stdscr.addstr(y, x, header[0])
+	y += 1
+	if (len(header) > 1):
+		stdscr.addstr(y, x, header[1], curses.color_pair(1))
+		y += 1
+	y += 1
+		
 
-				elif event.key == pygame.K_RIGHT:
-					if nextPage != '':
-						currentPage = nextPage
+	for i, group in enumerate(groups):
+		for line in group:
+			if i == 0 and len(group) == 1:
+				stdscr.addstr(y, x, line, curses.A_STANDOUT)
+			elif i % 2 == 0:
+				stdscr.addstr(y, x, line, curses.color_pair(2))
+			else:
+				stdscr.addstr(y, x, line)
+			y += 1
+		y += 1
 
-		screen.blit(background, (0, 0))
-		pygame.display.flip()
+	if (len(footer) > 0):
+		stdscr.addstr(curses.LINES - 1, x, footer[0], curses.color_pair(1))
 
-	pygame.quit()
-
-def viewTerminal():
-	print('TERMINAL')
-
-	currentPage = 100
-	oldPage = currentPage
-	(prevPage, nextPage, altText) = getTerminal(currentPage)
-
-	running = True
-	while running:
-		if currentPage != oldPage:
-			oldPage = currentPage
-			(prevPage, nextPage, altText) = getTerminal(currentPage)
-
-		print(altText)
-		print(f'{prevPage} < {currentPage} > {nextPage}')
-
-		userInput = input()
-		if userInput == 'q':
-			print('QUIT')
-			running = False
-		elif userInput == 'p':
-			if prevPage != '':
-				currentPage = prevPage
-		elif userInput == 'n':
-			if nextPage != '':
-				currentPage = nextPage
-
-def viewCurses():
-	print('CURSES')
-
-	stdscr = curses.initscr()
+def main(stdscr):
 	curses.noecho()
 	curses.cbreak()
+	curses.curs_set(0)
+	curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)
+	curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
 
 	currentPage = 100
+	currentSubpage = 0
 	oldPage = currentPage
-	(prevPage, nextPage, altText) = getTerminal(currentPage)
+	(subpages, prevPage, nextPage) = getSubpages(currentPage)
 
 	running = True
 	while running:
 		if currentPage != oldPage:
+			(subpages, prevPage, nextPage) = getSubpages(currentPage)
+			if currentPage < oldPage:
+				currentSubpage = len(subpages) - 1
+				stdscr.addstr(str(currentSubpage))
+			else:
+				currentSubpage = 0
 			oldPage = currentPage
-			(prevPage, nextPage, altText) = getTerminal(currentPage)
 
 		stdscr.clear()
-		stdscr.addstr(0, 0, altText)
-		stdscr.addstr(curses.LINES - 1, 0, f'{prevPage} < {currentPage} > {nextPage}')
+
+		renderText(stdscr, subpages[currentSubpage])
+
+		stdscr.refresh()
 
 		c = stdscr.getch()
 		if c == ord('q'):
 			running = False
 
-		elif c == ord('p'):
-			if prevPage != '':
-				currentPage = prevPage
+		elif c == ord('p') or c == ord('h'):
+			if len(subpages) > 1 and 0 < currentSubpage:
+				currentSubpage -= 1
+			elif prevPage != '':
+				currentPage = int(prevPage)
 
-		elif c == ord('n'):
-			if nextPage != '':
-				currentPage = nextPage
-
-	curses.endwin()
+		elif c == ord('n') or c == ord('l'):
+			if len(subpages) > 1 and currentSubpage < len(subpages) - 1:
+				currentSubpage += 1
+			elif nextPage != '':
+				currentPage = int(nextPage)
 
 def run():
-	parser = argparse.ArgumentParser(
-					prog='TextTV',
-					description='TextTV viewer in Python'
-					)
-
-	parser.add_argument(
-				'mode',
-				choices=['graphical', 'terminal', 'curses'],
-				nargs='?',
-				default='terminal'
-			)
-	args = parser.parse_args()
-
-	if args.mode == 'terminal':
-		viewTerminal()
-	elif args.mode == 'curses':
-		viewCurses()
-	else:
-		viewGraphical()
+	curses.wrapper(main)
 
 if __name__ == '__main__':
 	run()
